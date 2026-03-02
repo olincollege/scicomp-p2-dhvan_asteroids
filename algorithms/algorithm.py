@@ -83,6 +83,7 @@ class Algorithm(ABC):
         self.train_dataset: pd.DataFrame = train_dataset
         self.validate_dataset: pd.DataFrame = validate_dataset
         
+        
         self.X_train: pd.DataFrame = train_dataset[['a', 'ecc', 'sinI']]
         self.Y_train: pd.DataFrame = train_dataset['family1']
         
@@ -92,10 +93,21 @@ class Algorithm(ABC):
         self.X_validate: pd.DataFrame = validate_dataset[['a', 'ecc', 'sinI']]
         self.Y_validate: pd.DataFrame = validate_dataset['family1']
         
+        self.datasets = {
+            "X_train": self.X_train,
+            "Y_train": self.Y_train,
+            "X_test": self.X_test,
+            "Y_test": self.Y_test,
+            "X_validate": self.X_validate,
+            "Y_validate": self.Y_validate    
+        }
+        
         self.complete_asteroid_dataset: pd.DataFrame = complete_asteroid_dataset
         self.families_dataset: pd.DataFrame = families_dataset
         
         self.cached_predictions = None
+        
+        self.fit()
         
     @abstractmethod
     def fit(self) -> Self:
