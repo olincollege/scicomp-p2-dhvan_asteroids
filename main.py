@@ -1,4 +1,6 @@
-from algorithms.logisticRegression import AsteroidLogisticRegression
+from algorithms.kMeans import AsteroidKMeans
 
-lr = AsteroidLogisticRegression()
-print(lr.benchmark())
+model = AsteroidKMeans()
+print(model.benchmark())
+
+# model.visualize_clusters()

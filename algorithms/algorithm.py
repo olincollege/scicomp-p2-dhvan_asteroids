@@ -1,17 +1,12 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 import pickle
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import precision_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import completeness_score
+from sklearn.metrics.cluster import contingency_matrix
 import time
 import numpy as np
 import os
-from constants import TRAIN_TEST_VALIDATE_SPLIT
-from typing import Self
+from scipy.optimize import linear_sum_assignment
 
 
 class Algorithm(ABC):
@@ -31,13 +26,7 @@ class Algorithm(ABC):
             
             raw_merged_df = pd.merge(complete_asteroid_dataset, families_dataset, left_on="no", right_on="%ast.name", how="inner")
             dataset = raw_merged_df[['a', 'ecc', 'sinI', 'family1']]
-            train, test, validate = TRAIN_TEST_VALIDATE_SPLIT
-            _dataset, test_dataset = train_test_split(dataset, test_size=test)
-            
-            relative_validate = validate / (train + validate)
-            
-            train_dataset, validate_dataset = train_test_split(_dataset, test_size=relative_validate)
-            
+
             with open('saved_obj/complete_asteroid_dataset.pkl', 'wb') as f:
                 pickle.dump(complete_asteroid_dataset, f)
                 
@@ -46,15 +35,7 @@ class Algorithm(ABC):
                 
             with open('saved_obj/dataset.pkl', 'wb') as f:
                 pickle.dump(dataset, f)
-                
-            with open('saved_obj/train_dataset.pkl', 'wb') as f:
-                pickle.dump(train_dataset, f)
-                
-            with open('saved_obj/test_dataset.pkl', 'wb') as f:
-                pickle.dump(test_dataset, f)
-                
-            with open('saved_obj/validate_dataset.pkl', 'wb') as f:
-                pickle.dump(validate_dataset, f)
+
             print(f'Data loaded and processed in {time.perf_counter() - _time}s')
         else:
             print("LOADING SAVED PICKLE FILES")
@@ -67,39 +48,17 @@ class Algorithm(ABC):
                 
             with open('saved_obj/dataset.pkl', 'rb') as f:
                 dataset = pickle.load(f)
-                
-            with open('saved_obj/train_dataset.pkl', 'rb') as f:
-                train_dataset = pickle.load(f)
-                
-            with open('saved_obj/test_dataset.pkl', 'rb') as f:
-                test_dataset = pickle.load(f)
-                
-            with open('saved_obj/validate_dataset.pkl', 'rb') as f:
-                validate_dataset = pickle.load(f)
+
             print(f'Saved files loaded in {time.perf_counter() - _time:.3f}s')
         
         self.dataset: pd.DataFrame = dataset
-        self.test_dataset: pd.DataFrame = test_dataset
-        self.train_dataset: pd.DataFrame = train_dataset
-        self.validate_dataset: pd.DataFrame = validate_dataset
-        
-        
-        self.X_train: pd.DataFrame = train_dataset[['a', 'ecc', 'sinI']]
-        self.Y_train: pd.DataFrame = train_dataset['family1']
-        
-        self.X_test: pd.DataFrame = test_dataset[['a', 'ecc', 'sinI']]
-        self.Y_test: pd.DataFrame = test_dataset['family1']
-        
-        self.X_validate: pd.DataFrame = validate_dataset[['a', 'ecc', 'sinI']]
-        self.Y_validate: pd.DataFrame = validate_dataset['family1']
-        
+
+        self.X: pd.DataFrame = dataset[['a', 'ecc', 'sinI']]
+        self.Y: pd.Series = dataset['family1']
+                
         self.datasets = {
-            "X_train": self.X_train,
-            "Y_train": self.Y_train,
-            "X_test": self.X_test,
-            "Y_test": self.Y_test,
-            "X_validate": self.X_validate,
-            "Y_validate": self.Y_validate    
+            "X": self.X,
+            "Y": self.Y,
         }
         
         self.complete_asteroid_dataset: pd.DataFrame = complete_asteroid_dataset
@@ -107,39 +66,42 @@ class Algorithm(ABC):
         
         self.cached_predictions = None
         
-        self.fit()
-        
+        self.fit_predict()
+
     @abstractmethod
-    def fit(self) -> Self:
+    def fit_predict(self) -> np.ndarray:
         pass
-    
-    @abstractmethod
-    def predict(self) -> np.ndarray:
-        pass
-    
-    @abstractmethod
-    def validate(self) -> np.ndarray:
-        pass        
     
     def truncate(self, dataframe: pd.DataFrame, start_idx: int = 0, end_idx: int | None = None) -> pd.DataFrame:
         if(end_idx is None):
             return dataframe.iloc[start_idx:]
         
         return dataframe.iloc[start_idx:end_idx]
-    
-    def confusion_matrix(self,) -> np.ndarray:
-        predictions = self.predict() if self.cached_predictions is None else self.cached_predictions
-        return confusion_matrix(self.Y_test, predictions)
-    
-    def accuracy(self) -> float:
-        predictions = self.predict() if self.cached_predictions is None else self.cached_predictions
-        return float(accuracy_score(self.Y_test, predictions))
-    
-    def precision(self) -> np.ndarray:
-        predictions = self.predict() if self.cached_predictions is None else self.cached_predictions
-        return precision_score(self.Y_test, predictions, average=None, zero_division = 0) # type: ignore
+        
+    def completeness(self) -> float:
+        predictions = self.fit_predict() if self.cached_predictions is None else self.cached_predictions
+        
+        return float(completeness_score(self.Y, predictions))
     
     def benchmark(self) -> int:
-        precision = self.precision()
-        correct = np.count_nonzero(precision >= 0.95)
-        return int(correct)
+        predictions = self.fit_predict() if self.cached_predictions is None else self.cached_predictions
+        
+        c_matrix = np.array(contingency_matrix(self.Y, predictions))
+        
+        row_idx, col_idx = linear_sum_assignment(-c_matrix)
+        
+        optimal_matches = c_matrix[row_idx, col_idx]
+        
+        family_totals = c_matrix.sum(axis = 1)[row_idx]
+        cluster_totals = c_matrix.sum(axis = 0)[col_idx]
+        
+        with np.errstate(divide='ignore', invalid='ignore'):
+            completeness_ratios = optimal_matches / family_totals
+            purity_ratios = optimal_matches / cluster_totals
+    
+        successful_families = np.count_nonzero(
+            (completeness_ratios >= 0.95) &
+            (purity_ratios >= 0.95)
+        )
+        
+        return int(successful_families)
