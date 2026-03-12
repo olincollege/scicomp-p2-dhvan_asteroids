@@ -3,19 +3,19 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from decorators import timer
 import plotly.express as px
+import numpy as np
 
 class AsteroidKMeans(Algorithm):
-    def __init__(self, reload_raw_data = False, algorithm_name = "KMeans"):
+    def __init__(self, reload_raw_data = False, algorithm_name = "KMeans", debug_prints = False):
         self.kmeans_model = KMeans(50)
         self.scaler = StandardScaler()
-        super().__init__(reload_raw_data, algorithm_name)
+        super().__init__(reload_raw_data, algorithm_name, debug_prints)
         
     @timer
     def fit_predict(self):
         X_scaled = self.scaler.fit_transform(self.X)
         predictions = self.kmeans_model.fit_predict(X_scaled)
-        # predictions = self.kmeans_model.fit_predict(self.X)
-        
+        print("\nCluster Breakdown:", np.unique(predictions, return_counts=True))
         self.cached_predictions = predictions
         
         return predictions
