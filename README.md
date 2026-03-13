@@ -16,10 +16,10 @@ Identifying true asteroid families is an inherently noisy problem. In phase spac
 * **Data Integrity**: The phase space is littered with observational errors. Rows flagged with non-zero Quality Flags (`RFL`, `QCM`, `QCO`) are filtered out before scaling to ensure the model only trains on reliable telemetry.
 
 ## Benchmark
-The primary objective for this project is to identify at least eight asteroid families to a 95% completeness threshold. 
+The primary benchmark for this project is to identify at least eight asteroid families to a 95% completeness threshold. 
 
 ### Benchmark Metrics
-We validate our clustering against the standard asteroid families defined by the AstDys group, founded by A. Milani. The evaluation relies on two primary metrics:
+I validate my clustering against the standard asteroid families defined by the AstDys group, founded by A. Milani. The evaluation relies on two primary metrics:
 1. **Completeness (Recall)**: The percentage of true AstDys family members successfully grouped into a single algorithmic cluster. The benchmark target is >= 95%.
 2. **Purity (Precision)**: The percentage of a generated cluster that consists of true family members. While completeness is the primary benchmark, high purity (>= 80%) is required to ensure the algorithm isn't simply dumping all asteroids into massive, mathematically meaningless mega-clusters.
 
@@ -116,7 +116,7 @@ HDBSCAN theoretically solves the fundamental flaw of standard DBSCAN. By buildin
 To execute the pipeline and view the supercluster-optimized results on your machine:
 1. Clone the repository:
     ```bash
-    git clone [https://github.com/olincollege/scicomp-p2-Dh-Van.git](https://github.com/olincollege/scicomp-p2-Dh-Van.git)
+    git clone https://github.com/olincollege/scicomp-p2-Dh-Van.git
     ```
 2. Ensure `reload_raw_data=False` in your `main.py` instantiation so the system knows to load the cached, optimized model states (`.pkl` files) instead of launching a new optimization study.
 3. Execute the main script:
