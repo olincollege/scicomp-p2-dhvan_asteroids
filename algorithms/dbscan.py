@@ -1,23 +1,23 @@
-from algorithms.algorithm import Algorithm
+from algorithms.optuna import OptunaAlgorithm
 from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
-from decorators import timer
+import optuna
 import numpy as np
 
-class AsteroidDBSCAN(Algorithm):
-    def __init__(self, reload_raw_data = False, algorithm_name = "DBSCAN", debug_prints = False):
-        self.dbscan_model = DBSCAN(eps=0.05, min_samples=30, algorithm="ball_tree")
-        self.scaler = MinMaxScaler()
-        super().__init__(reload_raw_data, algorithm_name, debug_prints)
+class AsteroidDBSCAN(OptunaAlgorithm):
+    def __init__(self, reload_raw_data=False, algorithm_name="DBSCAN", debug_prints=False, n_trials=50):
+        super().__init__(reload_raw_data, algorithm_name, debug_prints, n_trials=n_trials)
         
-    @timer
-    def fit_predict(self):
-        X_scaled = self.scaler.fit_transform(self.X)
-        predictions = self.dbscan_model.fit_predict(X_scaled)
+    def get_initial_params(self) -> dict:
+        return {"eps": 0.02, "min_samples": 30, "scaler": "minmax"}
         
-        print("\nCluster Breakdown:", np.unique(predictions, return_counts=True))
+    def define_hyperparams(self, trial: optuna.Trial):
+        # The eps search space is restricted to very small values because the 
+        # proper orbital elements of true asteroid families exist within extremely tight variances.
+        trial.suggest_float("eps", 0.005, 0.04, log=False)
+        trial.suggest_int("min_samples", 5, 100)
         
-        self.cached_predictions = predictions
-        
-        return predictions
+    def train_predict(self, params: dict, X_scaled: np.ndarray) -> np.ndarray:
+        # ball_tree is enforced as the spatial indexer because it outperforms kd_tree 
+        # for continuous, low-dimensional astronomical data, cutting query times drastically.
+        dbscan_model = DBSCAN(eps=params["eps"], min_samples=params["min_samples"], algorithm="ball_tree", n_jobs=1)
+        return dbscan_model.fit_predict(X_scaled)

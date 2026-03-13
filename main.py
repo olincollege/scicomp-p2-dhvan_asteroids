@@ -1,16 +1,17 @@
 from algorithms.kMeans import AsteroidKMeans
 from algorithms.dbscan import AsteroidDBSCAN
 from algorithms.hdbscan import AsteroidHDBSCAN
+
 from tqdm import tqdm
 
-correct_families = []
-# for i in tqdm(range(10)):
-# model = AsteroidKMeans(debug_prints = True)
-# model = AsteroidHDBSCAN(debug_prints=True)
-model = AsteroidDBSCAN(debug_prints=True)
-# correct_families.append(model.benchmark())
-print(model.benchmark())
+trials = 25
 
-# print(sum(correct_families) / len(correct_families))
+models = [
+    AsteroidKMeans(reload_raw_data=False, debug_prints=False, n_trials=trials),
+    AsteroidHDBSCAN(reload_raw_data=False, debug_prints=False, n_trials=trials),
+    AsteroidDBSCAN(reload_raw_data=False, debug_prints=False, n_trials=trials),
+]
 
-# model.visualize_clusters()
+for i in tqdm(range(3)):
+    model = models[i]
+    model.benchmark()

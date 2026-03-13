@@ -11,11 +11,15 @@ from scipy.optimize import linear_sum_assignment
 
 
 class Algorithm(ABC):
-    
+    """
+    Base class for executing and evaluating unsupervised clustering algorithms 
+    on asteroid orbital parameter data to identify asteroid families.
+    """
     def __init__(self, reload_raw_data, algorithm_name, debug_prints):
         self.algorithm_name = algorithm_name
         os.makedirs("saved_obj", exist_ok=True)
         
+        # Globally suppress prints if debug is disabled to prevent console spam during parallel execution
         if(not debug_prints):
             print = lambda *args, **kwargs: None
         else:
@@ -24,6 +28,9 @@ class Algorithm(ABC):
         if(reload_raw_data):
             print("RELOADING RAW DATA")
             _time = time.perf_counter()
+            
+            # The raw data contains variable whitespace and trailing decimals in IDs
+            # that prevent a clean relational join between the structural and family datasets.
             complete_asteroid_dataset = pd.read_csv('raw_data/asteroids.csv', skiprows=2, sep=r'[\s;]+', engine='python')
             families_dataset = pd.read_csv('raw_data/families.csv', sep=r'\s+', engine='python')
             
@@ -31,7 +38,20 @@ class Algorithm(ABC):
             families_dataset['%ast.name'] = families_dataset['%ast.name'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
             
             raw_merged_df = pd.merge(complete_asteroid_dataset, families_dataset, left_on="no", right_on="%ast.name", how="left")
-            dataset = raw_merged_df[['a', 'ecc', 'sinI', 'family1']]
+
+            # RFL, QCM, and QCO are observation quality flags. 
+            # Non-zero values indicate unreliable measurements that introduce physical impossibilities 
+            # or extreme noise into the clustering space. Filtering them out guarantees a stable baseline.
+            raw_merged_df = raw_merged_df[
+                (raw_merged_df['RFL'] == 0) &
+                (raw_merged_df['QCM'] == 0) &
+                (raw_merged_df['QCO'] == 0)
+            ]
+
+            # We restrict the feature space to Proper Elements (a, ecc, sinI) and Frequencies (g, s).
+            # These are dynamically invariant over millions of years, causing true family members 
+            # to cluster tightly together, while background objects remain scattered.
+            dataset = raw_merged_df[['a', 'ecc', 'sinI', 'g', 's', 'family1']]
 
             with open('saved_obj/complete_asteroid_dataset.pkl', 'wb') as f:
                 pickle.dump(complete_asteroid_dataset, f)
@@ -59,7 +79,7 @@ class Algorithm(ABC):
         
         self.dataset: pd.DataFrame = dataset
 
-        self.X: pd.DataFrame = dataset[['a', 'ecc', 'sinI']]
+        self.X: pd.DataFrame = dataset[['a', 'ecc', 'sinI', 'g', 's']]
         self.Y: pd.Series = dataset['family1']
                 
         self.datasets = {
@@ -86,16 +106,20 @@ class Algorithm(ABC):
         
     def completeness(self) -> float:
         predictions = self.fit_predict() if self.cached_predictions is None else self.cached_predictions
-        
         return float(completeness_score(self.Y, predictions))
-    
+
     def benchmark(self) -> int:
+        """
+        Evaluates the clustering performance by mapping unsupervised clusters to the true asteroid families.
+        """
         predictions = self.fit_predict() if self.cached_predictions is None else self.cached_predictions
         
         Y_eval = self.Y.fillna("ZZZ_Background").astype(str)
         
         c_matrix = np.array(contingency_matrix(Y_eval, predictions))
         
+        # The Hungarian algorithm guarantees the mathematically optimal 1:1 mapping 
+        # between predicted clusters and true ground-truth families by minimizing the negative weights.
         row_idx, col_idx = linear_sum_assignment(-c_matrix)
         
         optimal_matches = c_matrix[row_idx, col_idx]
@@ -104,18 +128,20 @@ class Algorithm(ABC):
         cluster_totals = c_matrix.sum(axis = 0)[col_idx]
         
         with np.errstate(divide='ignore', invalid='ignore'):
-            # Completeness is a metric that tracks the amount of a family that is together in a cluster
             completeness_ratios = optimal_matches / family_totals
-            # Purity is a metric that tracks the amount of another family that is in the cluster
             purity_ratios = optimal_matches / cluster_totals
-    
-        # Want completeness and purity to both be above 95% since that indicates that: 
-        # 95% of the famliy stuck together in the cluster, and 95% of the cluster is made up of just that family
+            
+        # We discard mappings involving the background noise class (last row due to "ZZZ") 
+        # or the unclustered noise bin (column 0 in sklearn algorithms) 
+        # because we are only grading the algorithm on discrete family recovery.
+        valid_mask = (row_idx != c_matrix.shape[0] - 1) & (col_idx != 0)
+        
+        # Count the number of families that pass the benchmark
+        # Completeness >= 95%, Purity >= 80% and aren't noise
         successful_families = np.count_nonzero(
             (completeness_ratios >= 0.95) &
-            (purity_ratios >= 0.70) &
-            (row_idx != c_matrix.shape[0] - 1) & # 3. Ignore the Background row (last row)
-            (col_idx != 0)                       # 4. Ignore the Noise column (first column)
+            (purity_ratios >= 0.80) &
+            valid_mask
         )
         
         return int(successful_families)
