@@ -108,7 +108,7 @@ class Algorithm(ABC):
         predictions = self.fit_predict() if self.cached_predictions is None else self.cached_predictions
         return float(completeness_score(self.Y, predictions))
 
-    def benchmark(self) -> int:
+    def benchmark(self) -> tuple[int, int]:
         """
         Evaluates the clustering performance by mapping unsupervised clusters to the true asteroid families.
         """
@@ -144,4 +144,9 @@ class Algorithm(ABC):
             valid_mask
         )
         
-        return int(successful_families)
+        complete_families = np.count_nonzero(
+            (completeness_ratios >= 0.95) &
+            valid_mask
+        )
+        
+        return int(successful_families), int(complete_families)
